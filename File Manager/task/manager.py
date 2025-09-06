@@ -1,237 +1,171 @@
-import os
+import glob
 import math
+import os
 import shutil
-from pathlib import Path
 
-# run the user's program in our generated folders
 os.chdir('module/root_folder')
 
 
-def convert_size(size_bytes):
-    if size_bytes == 0:
-        return "0B"
-    size_names = ("B", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB")
-    i = int(math.floor(math.log(size_bytes, 1024)))
-    p = math.pow(1024, i)
-    # s = round(size_bytes / p, 2)
-    s = int(size_bytes / p)
-    return f"{s}{size_names[i]}"
+def pwd():
+    return os.getcwd()
 
 
-def mv_action(command):
-    if command == "mv":
-        print("Specify the current name of the file or directory and the new location and/or name")
-        return
-
-    if command.startswith("mv "):
-        parts = command.split()
-
-        if len(parts) == 3:
-            source = parts[1]
-            dest_name = parts[2]
-
-            if source.startswith("."):
-                list_files = os.listdir(os.getcwd())
-                files_to_move = []
-                for file in list_files:
-                    if file.endswith(source):
-                        files_to_move.append(file)
-                if len(files_to_move) == 0:
-                    print(f'File extension {source} not found in this directory')
-                    return
-                else:
-                    for file in files_to_move:
-                        dir_path = Path(dest_name)
-                        file_path = dir_path / file
-
-                        if os.path.isdir(dest_name):
-                            shutil.move(file, dest_name)
-                            continue
-
-                        while file_path.is_file():
-                            print(f'{file} already exists in this directory. Replace? (y/n)')
-                            answer = input()
-                            print(answer)
-                            if answer == "y":
-                                file_path.replace(file_path)
-                                break
-                            elif answer == "n":
-                                break
+def cd():
+    try:
+        os.chdir(command[3:])
+        return pwd().split(os.sep)[-1]
+    except FileNotFoundError:
+        return 'Invalid path'
 
 
-            elif os.path.isdir(dest_name):
-                shutil.move(source, dest_name)
+def humanize(size):
+    unit = 1024
+    power = min(int(math.log(size, unit)), 3)
+    units = ['B', 'KB', 'MB', 'GB']
 
-            elif os.path.isfile(source) or os.path.isdir(source):
-                if os.path.isdir(dest_name) or os.path.isfile(dest_name):
-                    print("The file or directory already exists")
-                else:
-                    try:
-                        os.rename(source, dest_name)
-                    except OSError:
-                        print("The file or directory already exists")
-            else:
-                print("No such file or directory")
+    return f'{size // pow(unit, power)}{units[power]}'
+
+
+def get_size(st_size, is_file):
+    if not args or not is_file:
+        return ''
+
+    commands = {'-l': str(st_size),
+                '-lh': humanize(st_size)}
+
+    return ' ' + commands.get(args[0], '')
+
+
+def ls():
+    files: list[os.DirEntry] = sorted(os.scandir(),
+                                      key=lambda x: not x.is_dir())
+
+    return '\n'.join(
+        file.name + get_size(file.stat().st_size, file.is_file())
+        for file in files
+    )
+
+
+def get_files(ext):
+    return [file for file in glob.glob(f'*{ext}') if os.path.isfile(file)]
+
+
+def rm_ext(file):
+    files = get_files(file)
+    if not files:
+        return f'File extension {file} not found in this directory'
+
+    for f in files:
+        os.remove(f)
+
+
+def rm():
+    if not args:
+        return 'Specify the file or directory'
+    file = args[0]
+
+    try:
+        if file.startswith('.'):
+            return rm_ext(file)
+        elif os.path.isfile(file):
+            os.remove(file)
         else:
-            print("Specify the current name of the file or directory and the new location and/or name")
+            shutil.rmtree(file)
+    except FileNotFoundError:
+        return 'No such file or directory'
 
 
-def rm_action(command):
-    if command == "rm":
-        print("Specify the file or directory")
-        return
-    if command.startswith("rm "):
-        args = command.split(" ", 2)[1]
-        # why is the "and" passing but not "or" needs to be researched
-        if os.path.isfile(args) and os.path.isdir(args):
-            os.remove(args)
-        elif args.startswith("."):
-            extension = args
-            list_files = os.listdir(os.getcwd())
-            files_to_remove = []
-            for file in list_files:
-                if extension in file:
-                    files_to_remove.append(file)
-            if len(files_to_remove) == 0:
-                print(f"File extension {extension} not found in this directory")
-                return
-            else:
-                for file in files_to_remove:
-                    os.remove(file)
+def mv_ext(fr, to):
+    files = get_files(fr)
+    if not files:
+        return f'File extension {fr} not found in this directory'
+
+    for file in files:
+        dest = os.path.join(to, os.path.basename(file))
+        if os.path.exists(dest):
+            if input(f'{file} already exists in this directory. Replace? (y/n)\n') == 'y':
+                shutil.move(file, dest)
         else:
-            print("No such file or directory")
+            shutil.move(file, dest)
 
 
-def cd_action(command):
-    if command == "cd ..":
-        os.chdir(os.path.dirname(os.getcwd()))
-        print(os.path.basename(os.getcwd()))
+def mv():
+    if len(args) != 2:
+        return 'Specify the current name of the file or directory and the new location and/or name'
 
-    elif command.startswith("cd "):
-        path = command.split(" ", 1)[1]
-        try:
-            os.chdir(path)
-            print(os.path.basename(os.getcwd()))
-        except OSError:
-            print("Invalid command")
+    fr, to = args
 
+    if fr.startswith('.'):
+        return mv_ext(fr, to)
 
-def ls_action(command):
-    if command.endswith("-l"):
-        with os.scandir('.') as entries:
-            for entry in entries:
-                if entry.is_dir():
-                    print(entry.name)
-        with os.scandir('.') as entries:
-            for entry in entries:
-                if entry.is_file():
-                    print(entry.name, os.stat(entry).st_size)
-    elif command.endswith(" -lh"):
-        with os.scandir('.') as entries:
-            for entry in entries:
-                if entry.is_dir():
-                    print(entry.name)
-        with os.scandir('.') as entries:
-            for entry in entries:
-                if entry.is_file():
-                    print(entry.name, convert_size(os.stat(entry).st_size))
-    elif command == "ls":
-        with os.scandir('.') as entries:
-            for entry in entries:
-                if entry.is_dir():
-                    print(entry.name)
-        with os.scandir('.') as entries:
-            for entry in entries:
-                if entry.is_file():
-                    print(entry.name)
+    if not os.path.exists(fr):
+        return 'No such file or directory'
+
+    if os.path.isdir(to):
+        to = os.path.join(to, os.path.basename(fr))
+
+    if os.path.exists(to):
+        return 'The file or directory already exists'
+
+    if os.path.isdir(fr) and os.path.commonpath([fr, to]) == fr:
+        return 'The file or directory already exists'
+
+    shutil.move(fr, to)
 
 
-def mkdir_action(command):
-    parts = command.split()
-    if len(parts) == 2:
-        new_directory = parts[1]
-        if not os.path.isdir(new_directory):
-            os.mkdir(new_directory)
+def mkdir():
+    if len(args) != 1:
+        return 'Specify the name of the directory to be made'
+    name = args[0]
+
+    if os.path.isdir(name):
+        return 'The directory already exists'
+
+    os.mkdir(name)
+
+
+def cp_ext(fr, to):
+    files = get_files(fr)
+    if not files:
+        return f'File extension {fr} not found in this directory'
+
+    for file in files:
+        destination = os.path.join(to, os.path.basename(file))
+        if os.path.exists(destination):
+            if input(f'{file} already exists in this directory. Replace? (y/n)\n') == 'y':
+                shutil.copy(file, destination)
         else:
-            print("The directory already exists")
-    else:
-        print("Specify the name of the directory to be made")
+            shutil.copy(file, destination)
 
 
-def cp_action(command):
-    parts = command.split()
-    if len(parts) == 1:
-        print("Specify the file")
-    elif len(parts) > 3:
-        print("Specify the current name of the file or directory and the new location and/or name")
-    elif len(parts) == 3:
-        source = parts[1]
-        destination = parts[2]
+def cp():
+    if len(args) < 1:
+        return 'Specify the file'
+    if len(args) != 2:
+        return 'Specify the current name of the file or directory and the new location and/or name'
 
-        if os.path.isdir(destination) and os.path.isfile(source):
-            destination = os.path.join(destination, os.path.basename(source))
-            try:
-                shutil.copyfile(source, destination)
-            except shutil.SameFileError:
-                print(f"{os.path.basename(source)} already exists in this directory")
-                # print(f"1: Copied {source} to {destination}")
-        elif source.startswith("."):
-            list_files = os.listdir(os.getcwd())
-            files_to_copy = []
-            for file in list_files:
-                if file.endswith(source):
-                    files_to_copy.append(file)
-            if len(files_to_copy) == 0:
-                print(f"File extension {source} not found in this directory")
-                return
-            else:
-                if os.path.isdir(destination):
-                    destination = os.path.join(destination)
-                    for file in files_to_copy:
-                        dir_path = Path(destination)
-                        file_path = dir_path / file
-                        try:
-                            shutil.copy(file, destination)
-                        except shutil.SameFileError:
-                            while True:
-                                print(f"{file} already exists in this directory. Replace? (y/n)")
-                                answer = input()
-                                if answer == 'y':
-                                    src = Path(source).resolve()
-                                    dst = Path(destination).resolve()
-                                    src.replace(dst)
-                                    break
-                                elif answer == "n":
-                                    break
+    fr, to = args
 
-        elif not os.path.exists(source):
-            print("No such file or directory")
+    if fr.startswith('.'):
+        return cp_ext(fr, to)
+
+    if not os.path.exists(fr):
+        return 'No such file or directory'
+
+    if os.path.isdir(to):
+        to = os.path.join(to, os.path.basename(fr))
+
+    if os.path.isfile(to):
+        return f'{fr} already exists in this directory'
+
+    shutil.copy(fr, to)
 
 
-def main():
-    print("Input the command")
+ACTIONS = {
+    'pwd': pwd, 'cd': cd, 'ls': ls, 'mv': mv, 'rm': rm, 'mkdir': mkdir, 'cp': cp
+}
 
-    while True:
-        command = input()
-        if command == "quit":
-            exit()
-        elif command == "pwd":
-            print(os.getcwd())
-        elif command.startswith("cd"):
-            cd_action(command)
-        elif command.startswith("rm"):
-            rm_action(command)
-        elif command.startswith("mv"):
-            mv_action(command)
-        elif command.startswith("ls"):
-            ls_action(command)
-        elif command.startswith("mkdir"):
-            mkdir_action(command)
-        elif command.startswith("cp"):
-            cp_action(command)
-        else:
-            print("Invalid command")
-
-
-if __name__ == "__main__":
-    main()
+while (command := input()) != 'quit':
+    cmd, *args = command.split()
+    if out := ACTIONS.get(cmd, lambda: 'Invalid command')():
+        print(out)
