@@ -3,10 +3,6 @@ import math
 import shutil
 from pathlib import Path
 
-# run the user's program in our generated folders
-os.chdir('module/root_folder')
-
-
 def convert_size(size_bytes):
     if size_bytes == 0:
         return "0B"
